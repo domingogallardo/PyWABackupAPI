@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.venv/
+venv/
+
+# Packaging
+build/
+dist/
+.build/
+*.egg-info/
+pip-wheel-metadata/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local exports and scratch files
+tmp/
+*.sqlite-shm
+*.sqlite-wal
+
+# IDEs
+.vscode/
+.idea/
