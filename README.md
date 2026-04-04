@@ -93,37 +93,36 @@ python3.11 -m pywabackupapi list-chats \
   --json --pretty
 ```
 
-Export one chat as JSON:
+Export one chat as JSON only:
 
 ```bash
 python3.11 -m pywabackupapi export-chat \
   --backup-path "$HOME/Library/Application Support/MobileSync/Backup" \
   --backup-id "00008101-..." \
   --chat-id 44 \
-  --output /tmp/chat-44.json \
+  --output-json /tmp/chat-44.json \
   --pretty
 ```
 
-Export one chat and copy media:
+Export a full chat bundle into a directory:
 
 ```bash
-mkdir -p /tmp/wa-media
-
 python3.11 -m pywabackupapi export-chat \
   --backup-path "$HOME/Library/Application Support/MobileSync/Backup" \
   --backup-id "00008101-..." \
   --chat-id 44 \
-  --media-dir /tmp/wa-media \
-  --output /tmp/chat-44.json \
+  --output-dir /tmp/chat-44 \
   --pretty
 ```
+
+`--output-dir` creates the directory if needed, writes `chat-<id>.json` inside it, and copies exported media into that same directory. `--output-json` writes only the JSON file.
 
 If the package is installed, the same commands are available as:
 
 ```bash
 pywabackupapi list-backups
 pywabackupapi list-chats --backup-id "00008101-..."
-pywabackupapi export-chat --chat-id 44 --output /tmp/chat-44.json
+pywabackupapi export-chat --chat-id 44 --output-json /tmp/chat-44.json
 ```
 
 ## Python Usage

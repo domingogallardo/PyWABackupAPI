@@ -4,18 +4,23 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 from .support import make_sample_backup, make_temporary_directory, remove_item_if_exists
 
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return run_cli_checked(*args, check=True)
+
+
+def run_cli_checked(*args: str, check: bool) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{os.environ.get('PYTHONPATH', '')}:{os.path.abspath('src')}".strip(":")
     return subprocess.run(
         [sys.executable, "-m", "pywabackupapi", *args],
         cwd=os.path.abspath("."),
         env=env,
-        check=True,
+        check=check,
         text=True,
         capture_output=True,
     )
@@ -59,13 +64,11 @@ def test_cli_export_chat_to_stdout() -> None:
         remove_item_if_exists(fixture.rootURL)
 
 
-def test_cli_export_chat_to_file_and_media_dir() -> None:
+def test_cli_export_chat_to_output_json_only() -> None:
     fixture = make_sample_backup()
     output_dir = make_temporary_directory("PyWABackupAPI-cli-output")
     try:
         output_file = output_dir / "chat-44.json"
-        media_dir = output_dir / "media"
-        media_dir.mkdir(parents=True, exist_ok=True)
 
         completed = run_cli(
             "export-chat",
@@ -73,9 +76,7 @@ def test_cli_export_chat_to_file_and_media_dir() -> None:
             str(fixture.rootURL),
             "--chat-id",
             "44",
-            "--media-dir",
-            str(media_dir),
-            "--output",
+            "--output-json",
             str(output_file),
             "--pretty",
         )
@@ -83,7 +84,54 @@ def test_cli_export_chat_to_file_and_media_dir() -> None:
         assert "Wrote chat 44" in completed.stdout
         payload = json.loads(output_file.read_text(encoding="utf-8"))
         assert payload["chatInfo"]["id"] == 44
-        assert (media_dir / "fea35851-6a2c-45a3-a784-003d25576b45.pdf").exists()
+        assert not (output_dir / "fea35851-6a2c-45a3-a784-003d25576b45.pdf").exists()
     finally:
         remove_item_if_exists(output_dir)
         remove_item_if_exists(fixture.rootURL)
+
+
+def test_cli_export_chat_to_output_dir_bundle() -> None:
+    fixture = make_sample_backup()
+    output_root = make_temporary_directory("PyWABackupAPI-cli-output-dir")
+    try:
+        output_dir = output_root / "chat-export"
+
+        completed = run_cli(
+            "export-chat",
+            "--backup-path",
+            str(fixture.rootURL),
+            "--chat-id",
+            "44",
+            "--output-dir",
+            str(output_dir),
+            "--pretty",
+        )
+
+        output_file = output_dir / "chat-44.json"
+        assert "Wrote chat 44" in completed.stdout
+        payload = json.loads(output_file.read_text(encoding="utf-8"))
+        assert payload["chatInfo"]["id"] == 44
+        assert (output_dir / "fea35851-6a2c-45a3-a784-003d25576b45.pdf").exists()
+    finally:
+        remove_item_if_exists(output_root)
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_cli_export_chat_rejects_both_output_modes() -> None:
+    output_dir = Path("/tmp/chat-export")
+    try:
+        completed = run_cli_checked(
+            "export-chat",
+            "--chat-id",
+            "44",
+            "--output-json",
+            "/tmp/chat.json",
+            "--output-dir",
+            str(output_dir),
+            check=False,
+        )
+
+        assert completed.returncode == 2
+        assert "not allowed with argument" in completed.stderr
+    finally:
+        remove_item_if_exists(output_dir)

@@ -38,20 +38,21 @@ def build_parser() -> argparse.ArgumentParser:
     list_chats.add_argument("--json", action="store_true", help="Emit JSON instead of a text table.")
     list_chats.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
-    export_chat = subparsers.add_parser("export-chat", help="Export a full chat payload as JSON.")
+    export_chat = subparsers.add_parser("export-chat", help="Export a chat as JSON or as a full directory bundle.")
     _add_backup_resolution_args(export_chat)
     export_chat.add_argument("--chat-id", type=int, required=True, help="Chat id to export.")
-    export_chat.add_argument(
-        "--media-dir",
+    output_group = export_chat.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--output-json",
         type=Path,
         default=None,
-        help="Optional directory where chat media and contact photos will be copied.",
+        help="Optional JSON output path. Exports only the JSON payload.",
     )
-    export_chat.add_argument(
-        "--output",
+    output_group.add_argument(
+        "--output-dir",
         type=Path,
         default=None,
-        help="Optional JSON output path. Defaults to stdout.",
+        help="Optional export directory. Writes chat-<id>.json and copies media there.",
     )
     export_chat.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
@@ -153,16 +154,38 @@ def _handle_list_chats(args: argparse.Namespace) -> int:
 
 
 def _handle_export_chat(args: argparse.Namespace) -> int:
+    export_directory = None
+    if args.output_dir is not None:
+        export_directory = _resolve_output_dir(args.output_dir)
+
     wa_backup, backup = _resolve_connected_backup(args)
-    payload = wa_backup.getChat(chatId=args.chat_id, directoryToSaveMedia=args.media_dir)
+    payload = wa_backup.getChat(chatId=args.chat_id, directoryToSaveMedia=export_directory)
     rendered = _render_json(payload, args.pretty)
 
-    if args.output is None:
+    if export_directory is not None:
+        output_json = export_directory / f"chat-{args.chat_id}.json"
+        _print_or_write(rendered, output_json)
+        print(f"Wrote chat {args.chat_id} from backup {backup.identifier} to {output_json}")
+    elif args.output_json is None:
         print(rendered)
     else:
-        _print_or_write(rendered, args.output)
-        print(f"Wrote chat {args.chat_id} from backup {backup.identifier} to {args.output}")
+        output_json = _resolve_output_json_path(args.output_json)
+        _print_or_write(rendered, output_json)
+        print(f"Wrote chat {args.chat_id} from backup {backup.identifier} to {output_json}")
     return 0
+
+
+def _resolve_output_json_path(path: Path) -> Path:
+    if path.exists() and path.is_dir():
+        raise ValueError(f"--output-json expects a file path, but '{path}' is a directory.")
+    return path
+
+
+def _resolve_output_dir(path: Path) -> Path:
+    if path.exists() and not path.is_dir():
+        raise ValueError(f"--output-dir expects a directory path, but '{path}' is a file.")
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def main(argv: list[str] | None = None) -> int:
