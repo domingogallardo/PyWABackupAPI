@@ -1,6 +1,6 @@
 # PyWABackupAPI
 
-`PyWABackupAPI` is a Python port of `SwiftWABackupAPI` for exploring WhatsApp data stored inside an unencrypted iPhone backup.
+`PyWABackupAPI` is a Python port of [`SwiftWABackupAPI`](https://github.com/domingogallardo/SwiftWABackupAPI) for exploring WhatsApp data stored inside an unencrypted iPhone backup.
 
 It is designed to stay behaviorally close to the Swift implementation and is validated against:
 
@@ -177,7 +177,7 @@ docs/                  Extra project documentation
 
 This repository intentionally tracks the behavior of the sibling Swift project:
 
-- source reference: `SwiftWABackupAPI`
+- source reference: [SwiftWABackupAPI](https://github.com/domingogallardo/SwiftWABackupAPI)
 - slow tests expect the real local fixture under `../SwiftWABackupAPI/Tests/Data`
 - the Swift oracle in `tests/swift_oracle/` imports the Swift package by local path
 
