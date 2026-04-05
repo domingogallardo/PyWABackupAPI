@@ -435,6 +435,7 @@ class GroupMember:
 
     TABLE_NAME = "ZWAGROUPMEMBER"
     EXPECTED_COLUMNS = {"Z_PK", "ZMEMBERJID", "ZCONTACTNAME"}
+    ACTIVE_MEMBERSHIP_COLUMNS = {"ZCHATSESSION", "ZISACTIVE"}
 
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "GroupMember":
@@ -455,6 +456,25 @@ class GroupMember:
             (member_id,),
         ).fetchone()
         return None if row is None else cls.from_row(row)
+
+    @classmethod
+    def fetch_active_group_members(cls, chat_id: int, connection: sqlite3.Connection) -> list["GroupMember"]:
+        rows = connection.execute(f"PRAGMA table_info({cls.TABLE_NAME})").fetchall()
+        column_names = {str(row["name"]).upper() for row in rows}
+        if not cls.ACTIVE_MEMBERSHIP_COLUMNS.issubset(column_names):
+            return []
+
+        rows = connection.execute(
+            f"""
+            SELECT *
+            FROM {cls.TABLE_NAME}
+            WHERE ZCHATSESSION = ?
+              AND IFNULL(ZISACTIVE, 0) = 1
+            ORDER BY Z_PK
+            """,
+            (chat_id,),
+        ).fetchall()
+        return [cls.from_row(row) for row in rows]
 
     @classmethod
     def fetch_group_member_ids(cls, chat_id: int, connection: sqlite3.Connection) -> list[int]:
@@ -1170,11 +1190,34 @@ class WABackup:
         group_member = GroupMember.fetch_group_member(memberId, connection)
         if group_member is None:
             return None
+        return self.fetchResolvedGroupMemberInfo(group_member, connection)
+
+    def fetchResolvedGroupMemberInfo(
+        self,
+        groupMember: GroupMember,
+        connection: sqlite3.Connection,
+    ) -> tuple[str | None, str | None]:
         return self.obtainSenderInfo(
-            jid=group_member.memberJid,
-            contactNameGroupMember=group_member.contactName,
+            jid=groupMember.memberJid,
+            contactNameGroupMember=groupMember.contactName,
             connection=connection,
         )
+
+    def fetchGroupContactMembers(
+        self,
+        chatId: int,
+        connection: sqlite3.Connection,
+    ) -> list[GroupMember]:
+        active_members = GroupMember.fetch_active_group_members(chatId, connection)
+        if active_members:
+            return active_members
+
+        members: list[GroupMember] = []
+        for member_id in GroupMember.fetch_group_member_ids(chatId, connection):
+            group_member = GroupMember.fetch_group_member(member_id, connection)
+            if group_member is not None:
+                members.append(group_member)
+        return members
 
     def fetchDuration(self, mediaItemId: int, connection: sqlite3.Connection) -> int | None:
         media_item = MediaItem.fetch_media_item(mediaItemId, connection)
@@ -1311,14 +1354,31 @@ class WABackup:
             lid_account = self.lidAccountIndex.account(jid)
             if lid_account is not None:
                 profile_display_name = normalized_author_field(ProfilePushName.push_name(jid, connection))
+                linked_phone_jid = self.linkedPhoneJid(jid) or self.lidAccountIndex.phoneJid(jid)
+                linked_phone_display_name: str | None = None
+                if linked_phone_jid is not None:
+                    linked_phone_display_name = self.resolvedContactDisplayName(
+                        jid=linked_phone_jid,
+                        profileDisplayName=normalized_author_field(ProfilePushName.push_name(linked_phone_jid, connection)),
+                        senderPhone=normalized_author_field(extracted_phone(linked_phone_jid)),
+                        connection=connection,
+                    )
                 return (
-                    profile_display_name,
+                    linked_phone_display_name or profile_display_name,
                     normalized_author_field(lid_account.normalizedPhoneNumber) or sender_phone,
                 )
 
         linked_phone_jid = self.linkedPhoneJid(jid)
         if linked_phone_jid is not None:
-            return (None, normalized_author_field(extracted_phone(linked_phone_jid)))
+            return (
+                self.resolvedContactDisplayName(
+                    jid=linked_phone_jid,
+                    profileDisplayName=normalized_author_field(ProfilePushName.push_name(linked_phone_jid, connection)),
+                    senderPhone=normalized_author_field(extracted_phone(linked_phone_jid)),
+                    connection=connection,
+                ),
+                normalized_author_field(extracted_phone(linked_phone_jid)),
+            )
 
         push_name = ProfilePushName.push_name(jid, connection)
         if push_name is not None:
@@ -1328,6 +1388,26 @@ class WABackup:
             return (chat_session_name, sender_phone)
 
         return (contactNameGroupMember, sender_phone)
+
+    def resolvedContactDisplayName(
+        self,
+        jid: str,
+        profileDisplayName: str | None,
+        senderPhone: str | None,
+        connection: sqlite3.Connection,
+    ) -> str | None:
+        chat_session_name = normalized_author_field(ChatSession.fetch_chat_session_name(jid, connection))
+        if chat_session_name is not None and not self.isPhoneLikeDisplayLabel(chat_session_name, senderPhone):
+            return chat_session_name
+
+        if self.addressBookIndex is not None:
+            address_book_contact = self.addressBookIndex.contact(jid)
+            if address_book_contact is not None:
+                display_name = normalized_author_field(address_book_contact.bestDisplayName)
+                if display_name is not None:
+                    return display_name
+
+        return profileDisplayName
 
     def makeParticipantAuthor(
         self,
@@ -1525,14 +1605,13 @@ class WABackup:
                     other_contact = self.copyContactMedia(other_contact, backup, directory)
                 contacts.append(other_contact)
         else:
-            for member_id in GroupMember.fetch_group_member_ids(chatInfo.id, connection):
-                sender_info = self.fetchGroupMemberInfo(member_id, connection)
-                if sender_info is None:
+            seen_phones = {owner_phone}
+            for member in self.fetchGroupContactMembers(chatInfo.id, connection):
+                sender_name, sender_phone = self.fetchResolvedGroupMemberInfo(member, connection)
+                if sender_phone is None or sender_phone == owner_phone or sender_phone in seen_phones:
                     continue
-                sender_name, sender_phone = sender_info
-                if sender_phone is None or sender_phone == owner_phone:
-                    continue
-                contact = ContactInfo(name=sender_name or "", phone=sender_phone)
+                seen_phones.add(sender_phone)
+                contact = ContactInfo(name=sender_name or sender_phone, phone=sender_phone)
                 if directory is not None:
                     contact = self.copyContactMedia(contact, backup, directory)
                 contacts.append(contact)

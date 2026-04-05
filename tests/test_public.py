@@ -27,6 +27,7 @@ from .support import (
     MediaWriteDelegateSpy,
     add_lid_database,
     canonical_json,
+    make_connected_active_group_members_backup,
     make_connected_filtered_chat_backup,
     make_connected_group_backup,
     make_connected_incomplete_location_backup,
@@ -559,5 +560,26 @@ def test_group_contact_list_contains_owner_and_distinct_members() -> None:
             "08185296389",
         }
         assert len([contact for contact in dump.contacts if contact.name == "Me"]) == 1
+    finally:
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_group_contact_list_prefers_active_membership_and_deduplicates_history() -> None:
+    wa_backup, fixture = make_connected_active_group_members_backup()
+    try:
+        dump = wa_backup.getChat(chatId=710, directoryToSaveMedia=None)
+        contacts_by_phone = {contact.phone: contact for contact in dump.contacts}
+
+        assert len(dump.contacts) == 4
+        assert set(contacts_by_phone) == {
+            "08185296380",
+            "08185296378",
+            "08185296371",
+            "08185296390",
+        }
+        assert contacts_by_phone["08185296380"].name == "Me"
+        assert contacts_by_phone["08185296378"].name == "Alice Active"
+        assert contacts_by_phone["08185296371"].name == "Linked Delta"
+        assert contacts_by_phone["08185296390"].name == "Nova Member"
     finally:
         remove_item_if_exists(fixture.rootURL)

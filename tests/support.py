@@ -848,6 +848,154 @@ def make_connected_group_backup() -> tuple[WABackup, TemporaryBackupFixture]:
     return wa_backup, fixture
 
 
+def make_connected_active_group_members_backup() -> tuple[WABackup, TemporaryBackupFixture]:
+    def setup(connection: sqlite3.Connection) -> None:
+        create_common_tables(connection)
+        connection.execute("ALTER TABLE ZWAGROUPMEMBER ADD COLUMN ZISACTIVE INTEGER")
+        connection.execute("ALTER TABLE ZWAGROUPMEMBER ADD COLUMN ZCHATSESSION INTEGER")
+
+        latest = reference_date_timestamp(2024, 4, 11, 11, 0, 0)
+        connection.execute(
+            """
+            INSERT INTO ZWACHATSESSION
+            (Z_PK, ZCONTACTJID, ZPARTNERNAME, ZLASTMESSAGEDATE, ZMESSAGECOUNTER, ZSESSIONTYPE, ZARCHIVED)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (710, "08185296380-999999@g.us", "Active Member Group", latest, 3, 0, 0),
+        )
+        connection.execute(
+            """
+            INSERT INTO ZWACHATSESSION
+            (Z_PK, ZCONTACTJID, ZPARTNERNAME, ZLASTMESSAGEDATE, ZMESSAGECOUNTER, ZSESSIONTYPE, ZARCHIVED)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (711, "08185296380@s.whatsapp.net", "Me", latest, 1, 0, 0),
+        )
+
+        historical_members = [
+            (901, "08185296378@s.whatsapp.net", "Alice Historical", 0, 710),
+            (902, "40482648261001@lid", None, 0, 710),
+        ]
+        connection.executemany(
+            """
+            INSERT INTO ZWAGROUPMEMBER (Z_PK, ZMEMBERJID, ZCONTACTNAME, ZISACTIVE, ZCHATSESSION)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            historical_members,
+        )
+
+        active_members = [
+            (911, "08185296380@s.whatsapp.net", None, 1, 710),
+            (912, "08185296378@s.whatsapp.net", "Alice Active", 1, 710),
+            (913, "40482648261001@lid", None, 1, 710),
+            (914, "40482648261002@lid", None, 1, 710),
+        ]
+        connection.executemany(
+            """
+            INSERT INTO ZWAGROUPMEMBER (Z_PK, ZMEMBERJID, ZCONTACTNAME, ZISACTIVE, ZCHATSESSION)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            active_members,
+        )
+
+        push_names = [
+            ("Linked Delta", "08185296371@s.whatsapp.net"),
+            ("Nova Member", "08185296390@s.whatsapp.net"),
+        ]
+        connection.executemany(
+            "INSERT INTO ZWAPROFILEPUSHNAME (ZPUSHNAME, ZJID) VALUES (?, ?)",
+            push_names,
+        )
+
+        messages = [
+            (
+                710001,
+                "08185296380-999999@g.us",
+                0,
+                901,
+                710,
+                "Historical Alice message",
+                reference_date_timestamp(2024, 4, 11, 10, 0, 0),
+                "08185296378@s.whatsapp.net",
+                None,
+                0,
+                None,
+                "active-group-1",
+            ),
+            (
+                710002,
+                "08185296380-999999@g.us",
+                0,
+                902,
+                710,
+                "Historical Delta message",
+                reference_date_timestamp(2024, 4, 11, 10, 5, 0),
+                "40482648261001@lid",
+                None,
+                0,
+                None,
+                "active-group-2",
+            ),
+            (
+                710003,
+                "08185296380-999999@g.us",
+                0,
+                None,
+                710,
+                "Outgoing",
+                latest,
+                None,
+                None,
+                1,
+                None,
+                "active-group-3",
+            ),
+            (
+                711001,
+                "08185296380@s.whatsapp.net",
+                6,
+                None,
+                711,
+                None,
+                reference_date_timestamp(2024, 4, 11, 9, 0, 0),
+                None,
+                None,
+                1,
+                None,
+                "active-group-owner",
+            ),
+        ]
+        connection.executemany(
+            """
+            INSERT INTO ZWAMESSAGE
+            (Z_PK, ZTOJID, ZMESSAGETYPE, ZGROUPMEMBER, ZCHATSESSION, ZTEXT, ZMESSAGEDATE, ZFROMJID, ZMEDIAITEM, ZISFROMME, ZGROUPEVENTTYPE, ZSTANZAID)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            messages,
+        )
+
+    fixture = make_temporary_backup(name="active-group-members-backup", chat_storage_setup=setup)
+
+    add_lid_database(
+        fixture,
+        setup=lambda connection: connection.executemany(
+            """
+            INSERT INTO ZWAZACCOUNT
+            (Z_PK, ZIDENTIFIER, ZPHONENUMBER, ZCREATEDAT)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (1, "40482648261001@lid", "08185296371", reference_date_timestamp(2025, 2, 10, 12, 0, 0)),
+                (2, "40482648261002@lid", "08185296390", reference_date_timestamp(2025, 2, 10, 12, 1, 0)),
+            ],
+        ),
+    )
+
+    wa_backup = WABackup(backupPath=str(fixture.rootURL))
+    wa_backup.connectChatStorageDb(fixture.backup)
+    return wa_backup, fixture
+
+
 def make_connected_incomplete_location_backup() -> tuple[WABackup, TemporaryBackupFixture]:
     def setup(connection: sqlite3.Connection) -> None:
         create_common_tables(connection)

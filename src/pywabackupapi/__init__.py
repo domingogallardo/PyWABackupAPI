@@ -29,6 +29,8 @@ from .models import (
 )
 from .utils import canonical_json_dumps
 
+__version__ = "0.1.1"
+
 __all__ = [
     "BackupError",
     "BackupFetchResult",
@@ -57,5 +59,6 @@ __all__ = [
     "UnsupportedSchemaError",
     "WABackup",
     "WABackupDelegate",
+    "__version__",
     "canonical_json_dumps",
 ]
