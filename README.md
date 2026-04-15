@@ -91,6 +91,10 @@ python3.11 -m pywabackupapi list-backups \
   --json --pretty
 ```
 
+`list-backups` now reports diagnostic status for each candidate backup, including
+whether it is ready, encrypted, or otherwise unusable. In JSON mode, the new
+`backups` array exposes `status`, `isEncrypted`, `isReady`, and `issue`.
+
 List chats for a backup:
 
 ```bash
@@ -124,9 +128,13 @@ python3.11 -m pywabackupapi export-chat \
 
 `--output-dir` creates the directory if needed, writes `chat-<id>.json` inside it, and copies exported media into that same directory. `--output-json` writes only the JSON file.
 
-The CLI continues to use the legacy backup discovery flow. If you need
-encryption-aware diagnostics, use the library API and inspect backups with
-`inspectBackups()` before calling `connectChatStorageDb(...)`.
+The CLI now surfaces backup diagnostics directly in `list-backups`, and
+`list-chats` / `export-chat` only operate on backups that are explicitly ready
+for chat access.
+
+If `--backup-id` is omitted, `list-chats` and `export-chat` now use the first
+ready backup they find. Encrypted backups and backups with unknown encryption
+status are rejected by those commands.
 
 If the package is installed, the same commands are available as:
 

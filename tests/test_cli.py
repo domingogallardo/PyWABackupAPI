@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .support import make_sample_backup, make_temporary_directory, remove_item_if_exists
+from .support import make_sample_backup, make_temporary_backup, make_temporary_directory, remove_item_if_exists
 
 
 def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
@@ -32,9 +32,28 @@ def test_cli_list_backups_json() -> None:
         completed = run_cli("list-backups", "--backup-path", str(fixture.rootURL), "--json")
         payload = json.loads(completed.stdout)
 
+        assert len(payload["backups"]) == 1
+        assert payload["backups"][0]["status"] == "ready"
+        assert payload["backups"][0]["isEncrypted"] is False
         assert len(payload["validBackups"]) == 1
         assert payload["validBackups"][0]["identifier"] == fixture.backup.identifier
+        assert payload["validBackups"][0]["isEncrypted"] is False
         assert payload["invalidBackups"] == []
+    finally:
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_cli_list_backups_json_reports_encrypted_backup() -> None:
+    fixture = make_temporary_backup(name="encrypted-backup", is_encrypted=True, chat_storage_setup=lambda connection: None)
+    try:
+        completed = run_cli("list-backups", "--backup-path", str(fixture.rootURL), "--json")
+        payload = json.loads(completed.stdout)
+
+        assert len(payload["backups"]) == 1
+        assert payload["backups"][0]["status"] == "encrypted"
+        assert payload["backups"][0]["isEncrypted"] is True
+        assert len(payload["validBackups"]) == 1
+        assert payload["validBackups"][0]["isEncrypted"] is True
     finally:
         remove_item_if_exists(fixture.rootURL)
 
@@ -47,6 +66,26 @@ def test_cli_list_chats_json() -> None:
 
         assert [item["id"] for item in payload] == [44, 593]
         assert payload[0]["name"] == "Alias Atlas"
+    finally:
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_cli_list_chats_rejects_encrypted_backup_by_id() -> None:
+    fixture = make_temporary_backup(name="encrypted-backup", is_encrypted=True, chat_storage_setup=lambda connection: None)
+    try:
+        completed = run_cli_checked(
+            "list-chats",
+            "--backup-path",
+            str(fixture.rootURL),
+            "--backup-id",
+            fixture.backup.identifier,
+            "--json",
+            check=False,
+        )
+
+        assert completed.returncode == 1
+        assert "is not ready for chat access" in completed.stderr
+        assert "Backup is encrypted." in completed.stderr
     finally:
         remove_item_if_exists(fixture.rootURL)
 

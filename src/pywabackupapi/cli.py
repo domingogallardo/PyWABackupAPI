@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from . import WABackup
-from .models import BackupFetchResult
+from .models import BackupDiscoveryInfo, BackupFetchResult
 from .utils import canonical_json_dumps, to_jsonable
 
 
@@ -72,13 +72,18 @@ def _add_backup_resolution_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _serialize_backup_fetch_result(result: BackupFetchResult) -> dict[str, Any]:
+def _serialize_backup_fetch_result(
+    result: BackupFetchResult,
+    inspections: list[BackupDiscoveryInfo],
+) -> dict[str, Any]:
     return {
+        "backups": inspections,
         "validBackups": [
             {
                 "identifier": backup.identifier,
                 "path": backup.path,
                 "creationDate": backup.creationDate,
+                "isEncrypted": backup.isEncrypted,
             }
             for backup in result.validBackups
         ],
@@ -94,16 +99,21 @@ def _render_json(payload: Any, pretty: bool) -> str:
 
 def _resolve_connected_backup(args: argparse.Namespace) -> tuple[WABackup, Any]:
     wa_backup = WABackup(backupPath=args.backup_path)
-    backups = wa_backup.getBackups()
+    inspections = wa_backup.inspectBackups()
 
     if args.backup_id is None:
-        if not backups.validBackups:
-            raise SystemExit("No valid backups found.")
-        backup = backups.validBackups[0]
+        inspection = next((item for item in inspections if item.isReady), None)
+        if inspection is None:
+            raise SystemExit("No ready backups found. Run 'list-backups' to inspect encryption status and backup diagnostics.")
     else:
-        backup = next((item for item in backups.validBackups if item.identifier == args.backup_id), None)
-        if backup is None:
+        inspection = next((item for item in inspections if item.identifier == args.backup_id), None)
+        if inspection is None:
             raise SystemExit(f"Backup '{args.backup_id}' not found.")
+
+    backup = inspection.backup
+    if not inspection.isReady or backup is None:
+        issue = inspection.issue or f"Backup status is {inspection.status.value}."
+        raise SystemExit(f"Backup '{inspection.identifier}' is not ready for chat access: {issue}")
 
     wa_backup.connectChatStorageDb(backup)
     return wa_backup, backup
@@ -119,21 +129,55 @@ def _print_or_write(text: str, output: Path | None = None) -> None:
 
 def _handle_list_backups(args: argparse.Namespace) -> int:
     wa_backup = WABackup(backupPath=args.backup_path)
+    inspections = wa_backup.inspectBackups()
     result = wa_backup.getBackups()
 
     if args.json:
-        print(_render_json(_serialize_backup_fetch_result(result), args.pretty))
+        print(_render_json(_serialize_backup_fetch_result(result, inspections), args.pretty))
         return 0
 
-    if not result.validBackups and not result.invalidBackups:
+    if not inspections:
         print("No backups found.")
         return 0
 
-    for backup in result.validBackups:
-        print(f"VALID\t{backup.identifier}\t{backup.creationDate.isoformat()}\t{backup.path}")
-    for invalid_path in result.invalidBackups:
-        print(f"INVALID\t{invalid_path}")
+    for inspection in inspections:
+        print(_format_backup_inspection_line(inspection))
     return 0
+
+
+def _format_backup_inspection_line(inspection: BackupDiscoveryInfo) -> str:
+    creation_date = inspection.creationDate.isoformat() if inspection.creationDate is not None else "-"
+    if inspection.isEncrypted is True:
+        encryption_state = "ENCRYPTED"
+    elif inspection.isEncrypted is False:
+        encryption_state = "NOT_ENCRYPTED"
+    else:
+        encryption_state = "UNKNOWN"
+
+    columns = [
+        _backup_status_label(inspection),
+        inspection.identifier,
+        creation_date,
+        encryption_state,
+        inspection.path,
+    ]
+    if inspection.issue is not None:
+        columns.append(inspection.issue)
+    return "\t".join(columns)
+
+
+def _backup_status_label(inspection: BackupDiscoveryInfo) -> str:
+    labels = {
+        "ready": "READY",
+        "encrypted": "ENCRYPTED",
+        "encryptionStatusUnavailable": "UNKNOWN_ENCRYPTION",
+        "missingRequiredFile": "INVALID_MISSING_FILE",
+        "malformedStatusPlist": "INVALID_STATUS_PLIST",
+        "missingWhatsAppDatabase": "NO_WHATSAPP_DATABASE",
+        "unreadableManifestDatabase": "UNREADABLE_MANIFEST_DB",
+        "unreadableBackup": "UNREADABLE_BACKUP",
+    }
+    return labels.get(inspection.status.value, inspection.status.value.upper())
 
 
 def _handle_list_chats(args: argparse.Namespace) -> int:
