@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from pywabackupapi import (
+    BackupDiscoveryStatus,
     ChatDumpPayload,
     ChatType,
     ContactInfo,
@@ -61,7 +62,61 @@ def test_backup_discovery_finds_generated_backup() -> None:
         assert len(backups.validBackups) == 1
         assert backups.invalidBackups == []
         assert backups.validBackups[0].identifier == fixture.backup.identifier
+        assert backups.validBackups[0].isEncrypted is False
         assert Path(backups.validBackups[0].path).resolve() == fixture.backup.url.resolve()
+    finally:
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_inspect_backups_returns_ready_backup_diagnostics() -> None:
+    fixture = make_sample_backup()
+    try:
+        wa_backup = WABackup(backupPath=str(fixture.rootURL))
+        info = wa_backup.inspectBackups()[0]
+
+        assert info.status == BackupDiscoveryStatus.READY
+        assert info.isReady is True
+        assert info.isEncrypted is False
+        assert info.issue is None
+        assert info.backup is not None
+        assert info.backup.identifier == fixture.backup.identifier
+        assert info.backup.isEncrypted is False
+    finally:
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_inspect_backups_returns_encrypted_backup_diagnostics() -> None:
+    fixture = make_temporary_backup(name="encrypted-backup", is_encrypted=True, chat_storage_setup=lambda connection: None)
+    try:
+        wa_backup = WABackup(backupPath=str(fixture.rootURL))
+        info = wa_backup.inspectBackups()[0]
+
+        assert info.status == BackupDiscoveryStatus.ENCRYPTED
+        assert info.isReady is False
+        assert info.isEncrypted is True
+        assert info.issue == "Backup is encrypted."
+        assert info.backup is not None
+        assert info.backup.isEncrypted is True
+    finally:
+        remove_item_if_exists(fixture.rootURL)
+
+
+def test_inspect_backups_reports_unknown_encryption_state_when_manifest_plist_is_missing() -> None:
+    fixture = make_temporary_backup(
+        name="unknown-encryption-backup",
+        is_encrypted=None,
+        chat_storage_setup=lambda connection: None,
+    )
+    try:
+        wa_backup = WABackup(backupPath=str(fixture.rootURL))
+        info = wa_backup.inspectBackups()[0]
+
+        assert info.status == BackupDiscoveryStatus.ENCRYPTION_STATUS_UNAVAILABLE
+        assert info.isReady is False
+        assert info.isEncrypted is None
+        assert info.issue == "Manifest.plist is missing, so encryption status could not be determined."
+        assert info.backup is not None
+        assert info.backup.isEncrypted is None
     finally:
         remove_item_if_exists(fixture.rootURL)
 
@@ -170,6 +225,25 @@ def test_get_backups_reports_incomplete_backup_as_invalid() -> None:
 
         assert backups.validBackups == []
         assert [path.resolve() for path in backups.invalidBackups] == [backup_url.resolve()]
+    finally:
+        remove_item_if_exists(root_url)
+
+
+def test_inspect_backups_reports_incomplete_backup_details() -> None:
+    root_url = make_temporary_directory("PyWABackupAPI-invalid-backup-diagnostics")
+    try:
+        backup_url = root_url / "incomplete-backup"
+        backup_url.mkdir(parents=True, exist_ok=True)
+        (backup_url / "Info.plist").write_bytes(b"")
+
+        wa_backup = WABackup(backupPath=str(root_url))
+        info = wa_backup.inspectBackups()[0]
+
+        assert info.identifier == "incomplete-backup"
+        assert info.status == BackupDiscoveryStatus.MISSING_REQUIRED_FILE
+        assert info.isReady is False
+        assert info.issue == "Manifest.db is missing."
+        assert info.backup is None
     finally:
         remove_item_if_exists(root_url)
 

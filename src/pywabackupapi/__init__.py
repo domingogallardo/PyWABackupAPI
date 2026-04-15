@@ -15,6 +15,8 @@ from .errors import (
 )
 from .files import FilenameAndHash
 from .models import (
+    BackupDiscoveryInfo,
+    BackupDiscoveryStatus,
     BackupFetchResult,
     ChatDumpPayload,
     ChatInfo,
@@ -33,6 +35,8 @@ __version__ = "0.1.1"
 
 __all__ = [
     "BackupError",
+    "BackupDiscoveryInfo",
+    "BackupDiscoveryStatus",
     "BackupFetchResult",
     "BackupManager",
     "ChatDumpPayload",

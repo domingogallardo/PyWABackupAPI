@@ -143,6 +143,7 @@ def add_manifest_entry(stored_file: StoredFile, backup_url: Path) -> None:
 
 def make_temporary_backup(
     name: str = "temp-backup",
+    is_encrypted: bool | None = False,
     additional_manifest_entries: list[StoredFile] | None = None,
     chat_storage_setup: Callable[[sqlite3.Connection], None] | None = None,
 ) -> TemporaryBackupFixture:
@@ -153,6 +154,8 @@ def make_temporary_backup(
     creation_date = datetime.fromtimestamp(1_711_267_200, tz=UTC)
     write_plist({}, backup_url / "Info.plist")
     write_plist({"Date": creation_date}, backup_url / "Status.plist")
+    if is_encrypted is not None:
+        write_plist({"IsEncrypted": is_encrypted}, backup_url / "Manifest.plist")
 
     chat_storage_hash = "ab1234567890chatstorage"
     create_manifest_database(backup_url / "Manifest.db", chat_storage_hash)
@@ -172,7 +175,7 @@ def make_temporary_backup(
     finally:
         connection.close()
 
-    backup = IPhoneBackup(url=backup_url, creationDate=creation_date)
+    backup = IPhoneBackup(url=backup_url, creationDate=creation_date, isEncrypted=is_encrypted)
     return TemporaryBackupFixture(rootURL=root_url, backupURL=backup_url, backup=backup)
 
 

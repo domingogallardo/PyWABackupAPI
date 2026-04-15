@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from pywabackupapi import (
+    BackupDiscoveryInfo,
+    BackupDiscoveryStatus,
     ChatDumpPayload,
     ChatInfo,
     ContactInfo,
@@ -79,6 +81,51 @@ def test_chat_info_json_contract() -> None:
   "name" : "Alias Atlas",
   "numberMessages" : 153,
   "photoFilename" : "chat_44.jpg"
+}"""
+
+
+def test_backup_discovery_info_ready_json_contract() -> None:
+    date = datetime(2024, 4, 3, 11, 24, 16, tzinfo=UTC)
+    info = BackupDiscoveryInfo(
+        identifier="sample-backup",
+        path="/tmp/sample-backup",
+        creationDate=date,
+        status=BackupDiscoveryStatus.READY,
+        isReady=True,
+        isEncrypted=False,
+        issue=None,
+    )
+
+    assert canonical_json(info) == """{
+  "creationDate" : "2024-04-03T11:24:16Z",
+  "identifier" : "sample-backup",
+  "isEncrypted" : false,
+  "isReady" : true,
+  "path" : "/tmp/sample-backup",
+  "status" : "ready"
+}"""
+
+
+def test_backup_discovery_info_encrypted_json_contract() -> None:
+    date = datetime(2024, 4, 3, 11, 24, 16, tzinfo=UTC)
+    info = BackupDiscoveryInfo(
+        identifier="encrypted-backup",
+        path="/tmp/encrypted-backup",
+        creationDate=date,
+        status=BackupDiscoveryStatus.ENCRYPTED,
+        isReady=False,
+        isEncrypted=True,
+        issue="Backup is encrypted.",
+    )
+
+    assert canonical_json(info) == """{
+  "creationDate" : "2024-04-03T11:24:16Z",
+  "identifier" : "encrypted-backup",
+  "isEncrypted" : true,
+  "isReady" : false,
+  "issue" : "Backup is encrypted.",
+  "path" : "/tmp/encrypted-backup",
+  "status" : "encrypted"
 }"""
 
 

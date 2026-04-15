@@ -30,6 +30,17 @@ class MessageAuthorSource(str, Enum):
     MESSAGE_JID = "messageJid"
 
 
+class BackupDiscoveryStatus(str, Enum):
+    READY = "ready"
+    ENCRYPTED = "encrypted"
+    ENCRYPTION_STATUS_UNAVAILABLE = "encryptionStatusUnavailable"
+    MISSING_REQUIRED_FILE = "missingRequiredFile"
+    MALFORMED_STATUS_PLIST = "malformedStatusPlist"
+    MISSING_WHATSAPP_DATABASE = "missingWhatsAppDatabase"
+    UNREADABLE_MANIFEST_DATABASE = "unreadableManifestDatabase"
+    UNREADABLE_BACKUP = "unreadableBackup"
+
+
 @dataclass(slots=True)
 class ChatInfo:
     id: int
@@ -111,6 +122,23 @@ class ChatDumpPayload:
 class BackupFetchResult:
     validBackups: list["IPhoneBackup"]
     invalidBackups: list[Path]
+
+
+@dataclass(slots=True)
+class BackupDiscoveryInfo:
+    identifier: str
+    path: str
+    creationDate: datetime | None
+    status: BackupDiscoveryStatus
+    isReady: bool
+    isEncrypted: bool | None = None
+    issue: str | None = None
+    backup: "IPhoneBackup | None" = field(
+        default=None,
+        repr=False,
+        compare=False,
+        metadata={"json_exclude": True},
+    )
 
 
 class WABackupDelegate(Protocol):

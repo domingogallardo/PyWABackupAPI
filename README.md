@@ -1,6 +1,6 @@
 # PyWABackupAPI
 
-`PyWABackupAPI` is a Python port of [`SwiftWABackupAPI`](https://github.com/domingogallardo/SwiftWABackupAPI) for exploring WhatsApp data stored inside an unencrypted iPhone backup.
+`PyWABackupAPI` is a Python port of [`SwiftWABackupAPI`](https://github.com/domingogallardo/SwiftWABackupAPI) for exploring WhatsApp data stored inside iPhone backups that contain WhatsApp data. It includes backup-discovery diagnostics for encrypted backups, while the chat and export APIs still operate on backups that are confirmed to be non-encrypted.
 
 It is designed to stay behaviorally close to the Swift implementation and is validated against:
 
@@ -20,12 +20,15 @@ Accessing or processing WhatsApp conversations without the explicit consent of t
 The main entry point is `WABackup`:
 
 - discover iPhone backups with `getBackups()`
+- inspect backups with encryption diagnostics via `inspectBackups()`
 - connect to `ChatStorage.sqlite` with `connectChatStorageDb(...)`
 - list chats with `getChats(...)`
 - export a full chat with `getChat(...)`
 
 Returned models mirror the Swift library:
 
+- `BackupDiscoveryInfo`
+- `BackupDiscoveryStatus`
 - `ChatInfo`
 - `MessageInfo`
 - `MessageAuthor`
@@ -37,8 +40,12 @@ Returned models mirror the Swift library:
 
 - Python `3.11+`
 - macOS access to an iPhone backup directory
-- a non-encrypted backup that contains WhatsApp data
 - read access to the backup folder
+- a backup that contains WhatsApp data
+
+For chat listing and export, the selected backup must be non-encrypted. Use
+`inspectBackups()` if you need an explicit readiness check before calling
+`connectChatStorageDb(...)`.
 
 By default, WhatsApp backups are usually found under:
 
@@ -117,6 +124,10 @@ python3.11 -m pywabackupapi export-chat \
 
 `--output-dir` creates the directory if needed, writes `chat-<id>.json` inside it, and copies exported media into that same directory. `--output-json` writes only the JSON file.
 
+The CLI continues to use the legacy backup discovery flow. If you need
+encryption-aware diagnostics, use the library API and inspect backups with
+`inspectBackups()` before calling `connectChatStorageDb(...)`.
+
 If the package is installed, the same commands are available as:
 
 ```bash
@@ -127,14 +138,20 @@ pywabackupapi export-chat --chat-id 44 --output-json /tmp/chat-44.json
 
 ## Python Usage
 
+Recommended discovery flow:
+
 ```python
 from pathlib import Path
 
-from pywabackupapi import WABackup
+from pywabackupapi import BackupDiscoveryStatus, WABackup
 
 wa = WABackup()
-backups = wa.getBackups()
-backup = backups.validBackups[0]
+inspections = wa.inspectBackups()
+backup = next(
+    inspection.backup
+    for inspection in inspections
+    if inspection.status == BackupDiscoveryStatus.READY
+)
 
 wa.connectChatStorageDb(backup)
 
@@ -145,6 +162,48 @@ print(payload.chatInfo.name)
 print(len(payload.messages))
 print(len(payload.contacts))
 ```
+
+Compatibility flow retained for existing callers:
+
+```python
+from pywabackupapi import WABackup
+
+wa = WABackup()
+backups = wa.getBackups()
+backup = backups.validBackups[0]
+
+wa.connectChatStorageDb(backup)
+```
+
+`getBackups()` is retained as the legacy discovery API. It keeps the historical
+`validBackups` / `invalidBackups` split. `inspectBackups()` is the recommended
+entry point when you need encryption-aware discovery or per-backup diagnostics.
+
+Each `BackupDiscoveryInfo` includes:
+
+- `status` to distinguish `ready`, `encrypted`, and structural failure cases
+- `isEncrypted` when `Manifest.plist` exposes `IsEncrypted`
+- `isReady` as the high-level boolean gate for chat APIs
+- `backup` when the candidate can still be represented as an `IPhoneBackup`
+
+`BackupDiscoveryInfo.backup` is intentionally excluded from JSON serialization.
+It is the in-memory value you can pass to `connectChatStorageDb(...)` after
+checking `status == BackupDiscoveryStatus.READY`.
+
+## JSON Contract
+
+The canonical JSON payloads used by the Python port are verified in
+`tests/test_json_contract.py`.
+
+The tracked contract currently covers:
+
+- `BackupDiscoveryInfo`
+- `Reaction`
+- `MessageAuthor`
+- `ChatInfo`
+- `MessageInfo`
+- `ContactInfo`
+- `ChatDumpPayload`
 
 ## Testing
 

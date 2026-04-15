@@ -20,6 +20,8 @@ from .errors import (
 from .files import FileUtils, FilenameAndHash, MediaCopier
 from .models import (
     BackupFetchResult,
+    BackupDiscoveryInfo,
+    BackupDiscoveryStatus,
     ChatDumpPayload,
     ChatInfo,
     ChatType,
@@ -95,6 +97,7 @@ def _connect_database(path: Path) -> sqlite3.Connection:
 class IPhoneBackup:
     url: Path
     creationDate: datetime
+    isEncrypted: bool | None = None
 
     @property
     def path(self) -> str:
@@ -182,6 +185,21 @@ class BackupManager:
 
         return BackupFetchResult(validBackups=valid_backups, invalidBackups=invalid_backups)
 
+    def inspectBackups(self) -> list[BackupDiscoveryInfo]:
+        backup_root = Path(self.backupPath).expanduser()
+        try:
+            contents = list(backup_root.iterdir())
+        except Exception as error:
+            raise DirectoryAccessError(error) from error
+
+        inspections: list[BackupDiscoveryInfo] = []
+        for path in contents:
+            if not path.is_dir():
+                continue
+            inspections.append(self._inspect_backup(path))
+
+        return inspections
+
     def _get_backup(self, path: Path) -> IPhoneBackup:
         if not path.is_dir():
             raise InvalidBackupError(str(path), "Path is not a directory.")
@@ -196,7 +214,11 @@ class BackupManager:
             date = plist.get("Date")
             if not isinstance(date, datetime):
                 raise InvalidBackupError(str(path), "Status.plist is malformed.")
-            backup = IPhoneBackup(url=path, creationDate=ensure_utc(date))
+            backup = IPhoneBackup(
+                url=path,
+                creationDate=ensure_utc(date),
+                isEncrypted=self._encryption_state(path)[0],
+            )
             try:
                 backup.fetchWAFileHash("ChatStorage.sqlite")
             except Exception as error:
@@ -209,6 +231,154 @@ class BackupManager:
 
     def get_backups(self) -> BackupFetchResult:
         return self.getBackups()
+
+    def inspect_backups(self) -> list[BackupDiscoveryInfo]:
+        return self.inspectBackups()
+
+    def _inspect_backup(self, path: Path) -> BackupDiscoveryInfo:
+        identifier = path.name
+
+        if not path.is_dir():
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=None,
+                status=BackupDiscoveryStatus.MISSING_REQUIRED_FILE,
+                isReady=False,
+                issue="Path is not a directory.",
+            )
+
+        for expected_file in ("Info.plist", "Manifest.db", "Status.plist"):
+            if not (path / expected_file).exists():
+                return BackupDiscoveryInfo(
+                    identifier=identifier,
+                    path=str(path),
+                    creationDate=None,
+                    status=BackupDiscoveryStatus.MISSING_REQUIRED_FILE,
+                    isReady=False,
+                    issue=f"{expected_file} is missing.",
+                )
+
+        try:
+            with (path / "Status.plist").open("rb") as handle:
+                plist = plistlib.load(handle)
+            date = plist.get("Date")
+            if not isinstance(date, datetime):
+                raise InvalidBackupError(str(path), "Status.plist is malformed.")
+            creation_date = ensure_utc(date)
+        except InvalidBackupError as error:
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=None,
+                status=BackupDiscoveryStatus.MALFORMED_STATUS_PLIST,
+                isReady=False,
+                issue=str(error),
+            )
+        except Exception as error:
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=None,
+                status=BackupDiscoveryStatus.UNREADABLE_BACKUP,
+                isReady=False,
+                issue=str(error),
+            )
+
+        is_encrypted, encryption_issue = self._encryption_state(path)
+        backup = IPhoneBackup(url=path, creationDate=creation_date, isEncrypted=is_encrypted)
+
+        try:
+            backup.fetchWAFileHash("ChatStorage.sqlite")
+        except DatabaseConnectionError as error:
+            if isinstance(error.underlying, MediaNotFoundError):
+                return BackupDiscoveryInfo(
+                    identifier=identifier,
+                    path=str(path),
+                    creationDate=creation_date,
+                    status=BackupDiscoveryStatus.MISSING_WHATSAPP_DATABASE,
+                    isReady=False,
+                    isEncrypted=is_encrypted,
+                    issue="WhatsApp database not found.",
+                )
+
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=creation_date,
+                status=BackupDiscoveryStatus.UNREADABLE_MANIFEST_DATABASE,
+                isReady=False,
+                isEncrypted=is_encrypted,
+                issue=str(error),
+            )
+        except Exception as error:
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=creation_date,
+                status=BackupDiscoveryStatus.UNREADABLE_MANIFEST_DATABASE,
+                isReady=False,
+                isEncrypted=is_encrypted,
+                issue=str(error),
+            )
+
+        if is_encrypted is True:
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=creation_date,
+                status=BackupDiscoveryStatus.ENCRYPTED,
+                isReady=False,
+                isEncrypted=True,
+                issue="Backup is encrypted.",
+                backup=backup,
+            )
+
+        if is_encrypted is False:
+            return BackupDiscoveryInfo(
+                identifier=identifier,
+                path=str(path),
+                creationDate=creation_date,
+                status=BackupDiscoveryStatus.READY,
+                isReady=True,
+                isEncrypted=False,
+                issue=None,
+                backup=backup,
+            )
+
+        return BackupDiscoveryInfo(
+            identifier=identifier,
+            path=str(path),
+            creationDate=creation_date,
+            status=BackupDiscoveryStatus.ENCRYPTION_STATUS_UNAVAILABLE,
+            isReady=False,
+            isEncrypted=None,
+            issue=encryption_issue,
+            backup=backup,
+        )
+
+    def _encryption_state(self, path: Path) -> tuple[bool | None, str | None]:
+        manifest_plist = path / "Manifest.plist"
+        if not manifest_plist.exists():
+            return None, "Manifest.plist is missing, so encryption status could not be determined."
+
+        try:
+            with manifest_plist.open("rb") as handle:
+                plist = plistlib.load(handle)
+        except Exception as error:
+            return None, (
+                "Manifest.plist could not be read, so encryption status could not be determined: "
+                f"{error}"
+            )
+
+        if not isinstance(plist, dict):
+            return None, "Manifest.plist is malformed, so encryption status could not be determined."
+
+        is_encrypted = plist.get("IsEncrypted")
+        if not isinstance(is_encrypted, bool):
+            return None, "Manifest.plist does not contain IsEncrypted, so encryption status could not be determined."
+
+        return is_encrypted, None
 
 
 @dataclass(slots=True)
@@ -865,6 +1035,9 @@ class WABackup:
 
     def getBackups(self) -> BackupFetchResult:
         return self.phoneBackup.getBackups()
+
+    def inspectBackups(self) -> list[BackupDiscoveryInfo]:
+        return self.phoneBackup.inspectBackups()
 
     def connectChatStorageDb(self, backup: IPhoneBackup) -> None:
         chat_storage_hash = backup.fetchWAFileHash("ChatStorage.sqlite")
@@ -1634,6 +1807,9 @@ class WABackup:
 
     def get_backups(self) -> BackupFetchResult:
         return self.getBackups()
+
+    def inspect_backups(self) -> list[BackupDiscoveryInfo]:
+        return self.inspectBackups()
 
     def connect_chat_storage_db(self, backup: IPhoneBackup) -> None:
         self.connectChatStorageDb(backup)

@@ -10,7 +10,10 @@ These are self-contained and safe to run anywhere:
 - `tests/test_json_contract.py`
 - `tests/test_cli.py`
 
-They build temporary synthetic backups at runtime and do not depend on private chat data.
+They build temporary synthetic backups at runtime and do not depend on private
+chat data. The public suite covers both the legacy discovery API
+(`getBackups()`) and the diagnostic discovery API (`inspectBackups()`),
+including ready, encrypted, unknown-encryption, and incomplete-backup cases.
 
 Run them with:
 
@@ -57,3 +60,15 @@ PYTHONPATH=src python3.11 -m pytest
 - chat `44` payload matches the Swift export exactly
 - structural invariants hold across the whole fixture
 - WhatsApp Web-validated reaction cases still match expected output
+
+## JSON Contract Coverage
+
+`tests/test_json_contract.py` verifies the canonical JSON payloads for:
+
+- `BackupDiscoveryInfo`
+- `Reaction`
+- `MessageAuthor`
+- `ChatInfo`
+- `MessageInfo`
+- `ContactInfo`
+- `ChatDumpPayload`

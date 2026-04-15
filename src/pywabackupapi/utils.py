@@ -175,6 +175,8 @@ def _jsonable(value: Any) -> Any:
     if is_dataclass(value):
         result: dict[str, Any] = {}
         for field in fields(value):
+            if field.metadata.get("json_exclude"):
+                continue
             json_name = field.metadata.get("json_name", field.name)
             serialized = _jsonable(getattr(value, field.name))
             if serialized is not None:
