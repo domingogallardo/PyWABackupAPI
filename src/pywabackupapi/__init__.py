@@ -31,7 +31,7 @@ from .models import (
 )
 from .utils import canonical_json_dumps
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "BackupError",
