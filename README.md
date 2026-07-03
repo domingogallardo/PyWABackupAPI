@@ -1,8 +1,18 @@
 # PyWABackupAPI
 
-`PyWABackupAPI` is a Python port of [`SwiftWABackupAPI`](https://github.com/domingogallardo/SwiftWABackupAPI) for exploring WhatsApp data stored inside iPhone backups that contain WhatsApp data. It includes backup-discovery diagnostics for encrypted backups, while the chat and export APIs still operate on backups that are confirmed to be non-encrypted.
+> **Legacy status**
+>
+> `PyWABackupAPI` is frozen as legacy code and is no longer maintained in
+> parallel with [`SwiftWABackupAPI`](https://github.com/domingogallardo/SwiftWABackupAPI).
+> The maintained implementation is now SwiftWABackupAPI 3.0.0 and later.
+>
+> This repository remains available for historical reference and for users who
+> still need the previous Python behaviour. It will not receive the Swift 3.0
+> extracted-backup architecture unless a one-off update is explicitly requested.
 
-It is designed to stay behaviorally close to the Swift implementation and is validated against:
+`PyWABackupAPI` is the former Python port of [`SwiftWABackupAPI`](https://github.com/domingogallardo/SwiftWABackupAPI) for exploring WhatsApp data stored inside iPhone backups that contain WhatsApp data. It includes backup-discovery diagnostics for encrypted backups, while the chat and export APIs still operate on backups that are confirmed to be non-encrypted.
+
+Its final maintained scope was validated against:
 
 - fast synthetic public tests
 - JSON contract snapshots
@@ -16,6 +26,9 @@ This project is intended for legitimate backup, recovery, export, and personal a
 Accessing or processing WhatsApp conversations without the explicit consent of the people involved can violate privacy laws, workplace policies, and WhatsApp terms of service. Make sure you have the legal and ethical right to inspect the data before using this package.
 
 ## What The Package Exposes
+
+This describes the legacy Python API. The current Swift API has diverged in
+version 3.0.0 and now works from an extracted WhatsApp backup directory.
 
 The main entry point is `WABackup`:
 
@@ -83,6 +96,10 @@ from pywabackupapi import WABackup
 
 ## CLI Quick Start
 
+These commands describe the frozen Python CLI. For the maintained workflow,
+use SwiftWABackupAPI 3.0.0, where `list-chats` and `export-chat` read from an
+extracted WhatsApp backup path.
+
 List backups:
 
 ```bash
@@ -145,6 +162,9 @@ pywabackupapi export-chat --chat-id 44 --output-json /tmp/chat-44.json
 ```
 
 ## Python Usage
+
+This is legacy usage for the frozen Python port. New development should target
+SwiftWABackupAPI.
 
 Recommended discovery flow:
 
@@ -215,6 +235,9 @@ The tracked contract currently covers:
 
 ## Testing
 
+The test suite is retained for historical validation of this frozen port. It is
+not expected to track SwiftWABackupAPI 3.0.0 or later.
+
 Short version:
 
 ```bash
@@ -241,7 +264,7 @@ docs/                  Extra project documentation
 
 ## Relationship To The Swift Project
 
-This repository intentionally tracks the behavior of the sibling Swift project:
+This repository used to track the behavior of the sibling Swift project:
 
 - source reference: [SwiftWABackupAPI](https://github.com/domingogallardo/SwiftWABackupAPI)
 - slow tests expect the real local fixture under `../SwiftWABackupAPI/Tests/Data`
@@ -249,9 +272,13 @@ This repository intentionally tracks the behavior of the sibling Swift project:
 
 That means the full slow compatibility suite is easiest to run when both repositories live side by side in the same parent directory.
 
+As of SwiftWABackupAPI 3.0.0, this Python port no longer tracks new Swift
+features, CLI changes, JSON contract changes, or behaviour changes. The Python
+API remains at its previous direct-iPhone-backup workflow.
+
 ## Current Scope
 
-The port currently focuses on the same public behavior covered by the Swift project:
+The frozen port covers the previous public behaviour:
 
 - backup discovery
 - chat listing

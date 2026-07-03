@@ -13,12 +13,17 @@ The Python package metadata lives in `pyproject.toml`; library code is under `sr
 Follow normal Python conventions: `snake_case` for functions, methods, and variables, `PascalCase` for classes, and clear dataclass-based models for public payloads. Prefer small helpers over deeply nested logic, keep side effects close to the CLI or filesystem layers, and preserve the current standard-library-first approach unless a dependency is clearly justified.
 
 ## Testing Guidelines
-Tests use `pytest`. Keep public behavioural coverage in `tests/test_public.py`, CLI expectations in `tests/test_cli.py`, and slower full-fixture parity checks in `tests/test_full_fixture.py`. When fixture expectations change, update both the Python assertions and the corresponding Swift-side tests so both ports continue to describe the same behaviour.
+Tests use `pytest`. Keep public behavioural coverage in `tests/test_public.py`, CLI expectations in `tests/test_cli.py`, and slower full-fixture parity checks in `tests/test_full_fixture.py`. This repository is now frozen as legacy code, so do not update expectations to chase SwiftWABackupAPI 3.0.0 or later unless the user explicitly asks for a one-off Python update.
 
 ## Commit & Pull Request Guidelines
-Use focused commits with imperative summaries. Before pushing, run the narrowest useful test set for the change and expand to the full suite when the behaviour is broad or touches fixture-driven logic. Call out any cross-repo parity work in the commit or PR description when the Python port is following a Swift change.
+Use focused commits with imperative summaries. Before pushing, run the narrowest useful test set for the change and expand to the full suite when the behaviour is broad or touches fixture-driven logic. Call out explicitly when a change is documentation-only or a one-off legacy maintenance update.
 
-## Cross-Repo Synchronization
-`/Users/domingo/Programacion/PyWABackupAPI` and `/Users/domingo/Programacion/SwiftWABackupAPI` must evolve in parallel. Treat the Swift repository as the canonical source for behaviour, but do not allow the Python port to drift behind it.
+## Legacy Port Status
+`/Users/domingo/Programacion/PyWABackupAPI` is frozen as legacy code. The
+maintained implementation is `/Users/domingo/Programacion/SwiftWABackupAPI`,
+starting with SwiftWABackupAPI 3.0.0 and its extracted-backup workflow.
 
-Any bug fix, feature, public API change, CLI change, JSON contract change, or behaviour change introduced in `SwiftWABackupAPI` must be ported here in the same workstream, together with the corresponding tests and documentation updates when applicable. Do not intentionally leave the Python repo behind unless the user explicitly approves a temporary divergence.
+Do not port Swift bug fixes, features, public API changes, CLI changes, JSON
+contract changes, or behaviour changes here unless the user explicitly requests
+a one-off Python update. The Python API remains at its previous
+direct-iPhone-backup workflow.

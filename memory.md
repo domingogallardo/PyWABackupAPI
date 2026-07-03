@@ -1,3 +1,3 @@
 # Memory
 
-- 2026-04-05: `/Users/domingo/Programacion/SwiftWABackupAPI` and `PyWABackupAPI` must evolve in parallel. Every bug fix, new feature, public API change, CLI change, JSON contract change, or behaviour change introduced in Swift must be ported to the Python repo in the same workstream, together with tests and documentation updates when applicable.
+- 2026-07-03: `PyWABackupAPI` is frozen as legacy code. Do not port SwiftWABackupAPI bug fixes, features, public API changes, CLI changes, JSON contract changes, or behaviour changes here unless the user explicitly requests a one-off Python update.
